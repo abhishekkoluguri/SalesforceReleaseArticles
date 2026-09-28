@@ -1,0 +1,122 @@
+What is the OAuth 2.0 Device Flow, first?
+
+Imagine you're setting up a smart TV app (like Netflix on your TV). The TV shows a code on screen and says "go to netflix.com/activate on your phone or computer and enter this code." You log in on your phone, and the TV magically gets logged in too.
+
+That's the device flow — it exists for devices that can't easily type a username/password (TVs, IoT devices, printers, etc.). It's a login trick for input-limited devices.
+
+What's the problem Salesforce is fixing?
+
+People started using this "TV login trick" for things it wasn't meant for — like regular apps, scripts, or integrations that could just use normal login flows. That's risky because the device flow was never designed with strong security controls for general-purpose use. It's more exploitable if misused.
+
+So Salesforce is saying: "You can only use this flow if you're actually building something like a TV/IoT app."
+
+How do they enforce "this is really for TV/IoT-like apps"?
+
+They added strict requirements. Your app must be:
+
+An External Client App (a newer app type — not the old "Connected App")
+Set to "local" distribution (meaning: not distributed/shared broadly — it's local to your org)
+Using localhost as the callback URL (i.e., it's not calling back to some public website — localhost signals it's a locally-run device/process)
+Not using any other OAuth login flow at the same time (it can only do device flow, nothing else)
+
+If your app doesn't check all 4 boxes → it's "non-compliant" and will get blocked.
+
+Important callout: Connected Apps (the older app type) are automatically non-compliant, always. If you're using a Connected App with device flow today, you must migrate to an External Client App — there's no way to make an old-style Connected App compliant.
+
+Timeline — what happens when
+When	What happens
+Now (or once you see it)	You review the release update in Setup
+August 2026	Warning banners start appearing on apps using device flow — even compliant ones just get an informational banner; non-compliant ones get a scarier warning + you can no longer save changes to that app without fixing it
+November 30, 2026	Enforcement day — non-compliant apps get blocked from using device flow entirely
+What does this mean for YOUR application?
+
+Here's the simple checklist to run against your app:
+
+Do you use OAuth device flow at all? (Check Setup → App Manager / connected apps / external client apps for "Enable Device Flow")
+If no → this update doesn't affect you at all. Done.
+If yes → keep going.
+Is it a Connected App or External Client App?
+Connected App → you must migrate to External Client App before Nov 30, 2026, or device flow login will break.
+Is distribution state "Local"? And is the callback URL localhost? And is device flow the only OAuth flow enabled on that app?
+If all yes → you're fine, just expect the informational banner starting August 2026.
+If any no → you'll need to reconfigure, or the app breaks Nov 30, 2026.
+Does your actual use case even fit device flow's intended purpose (limited-input device)? If you were using device flow just because it was "convenient" for some script or backend job, this is a sign you should switch to a more appropriate flow (like client credentials or JWT bearer) instead of fighting to stay compliant.
+
+Once you tell me a bit about how your application authenticates with Salesforce (or if you're not sure yet), I can help you figure out exactly what action, if any, you need to take.
+
+What is OAuth mean?
+
+Great question — let's build this up from scratch.
+
+The problem OAuth solves
+
+Imagine a third-party app (let's say a scheduling tool) wants to read your Salesforce data. The old, bad way to do this would be: you give the scheduling tool your Salesforce username and password directly. It logs in as you.
+
+That's terrible for a few reasons:
+
+The app now has your actual password — if it gets hacked, so does your Salesforce account.
+The app can do anything you can do — no limits.
+You can't easily revoke access without changing your password (which breaks everything else too).
+What OAuth actually is
+
+OAuth 2.0 is a standard way for you to grant an app limited access to your data, without ever handing over your password.
+
+Think of it like a hotel key card instead of your house key:
+
+You (the guest) don't get the master key.
+The front desk (Salesforce) gives you a card (a token) that opens only your room, for a limited time.
+If you lose the card, the hotel just deactivates that card — your actual identity/password is untouched.
+How it works, simply
+You try to use a third-party app that wants to connect to Salesforce.
+The app redirects you to Salesforce's own login page — you type your password only into Salesforce, never into the third-party app.
+Salesforce asks you: "This app wants to read your contacts. Allow?" — you approve (or deny).
+Salesforce gives the app a token (a temporary, limited-permission key) — not your password.
+The app uses that token to talk to Salesforce on your behalf, but only within the permissions you approved.
+Where "device flow" fits in
+
+There are several ways (called "flows") to get that token, depending on the situation:
+
+Normal login flow — you're on a website/app with a browser, you log in directly.
+Device flow — you're on something without a good way to type a password (a TV remote, an IoT device) — so it shows a code, and you approve it from a different device (like your phone) that does have a keyboard/browser.
+
+That's the piece from the article: Salesforce is tightening the rules on who's allowed to use that TV-style device flow, because it started being used in places it wasn't meant for.
+
+Does that clear it up? Happy to relate it back to how it applies in your app's specific login setup if you want.
+
+how to check whether my application uses device flow or not?
+
+Good practical question. There are two places to check — Salesforce side (the app configuration) and your code side (how your app actually talks to Salesforce). Let's go through both.
+
+1. Check on the Salesforce side (config)
+
+This tells you whether device flow is enabled for your app, regardless of whether it's currently being used.
+
+If you're using a Connected App:
+
+Go to Setup (gear icon → Setup)
+In the Quick Find box, type App Manager
+Find your app in the list → click the dropdown arrow → View (or Edit)
+Look under OAuth Policies / OAuth Settings section
+Check if there's a checkbox like "Enable Device Flow" — if it's checked, device flow is enabled for that app
+
+If you're using an External Client App:
+
+Setup → Quick Find → External Client Apps → External Client App Manager
+Open your app → go to the OAuth Settings / Policies section
+Same thing — look for the Device Flow toggle/checkbox
+
+Tip: If you're not sure which type your app is, App Manager and External Client App Manager are two separate lists in Setup — check both.
+
+2. Check on the code/integration side (how it's actually being used)
+
+Even if device flow is enabled, your app might not actually be using it. To confirm actual usage, look at your app's authentication code or integration logs for the grant_type parameter sent to Salesforce's token endpoint.
+
+Device flow specifically uses these:
+
+A request to /services/oauth2/token with grant_type=urn:ietf:params:oauth:grant-type:device_code (or a call to a /services/oauth2/device/authorize endpoint first)
+
+If your code/integration doesn't reference device_code or a /device/authorize call anywhere — you're not using device flow, even if it happens to be enabled in settings.
+
+3. Salesforce will also tell you directly (starting soon)
+
+Per the article you shared: starting August 2026, Salesforce will show a banner directly on the app's setup page if device flow is enabled — so if you wait, Salesforce will flag it for you automatically. But checking now is safer than waiting.
